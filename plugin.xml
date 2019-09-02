@@ -49,7 +49,9 @@
         <source-file src="src/android/ThemeableBrowserDialog.java" target-dir="src/com/initialxy/cordova/themeablebrowser" />
         <source-file src="src/android/InAppChromeClient.java" target-dir="src/com/initialxy/cordova/themeablebrowser" />
         <source-file src="src/android/ThemeableBrowserUnmarshaller.java" target-dir="src/com/initialxy/cordova/themeablebrowser" />
-    </platform>
+		<source-file src="src/android/VideoEnabledWebChromeClient.java" target-dir="src/org/apache/cordova/inappbrowser" />
+        <source-file src="src/android/VideoEnabledWebView.java" target-dir="src/org/apache/cordova/inappbrowser" />
+	</platform>
 
     <!-- ios -->
     <platform name="ios">

@@ -23,21 +23,22 @@ import org.apache.cordova.LOG;
 import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
-
+import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.JsPromptResult;
 import android.webkit.WebChromeClient;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.GeolocationPermissions.Callback;
 
-public class InAppChromeClient extends WebChromeClient {
+public class InAppChromeClient extends VideoEnabledWebChromeClient {
 
     private CordovaWebView webView;
     private String LOG_TAG = "InAppChromeClient";
     private long MAX_QUOTA = 100 * 1024 * 1024;
 
-    public InAppChromeClient(CordovaWebView webView) {
-        super();
+    public InAppChromeClient(CordovaWebView webView, View activityNonVideoView, ViewGroup activityVideoView) {
+        super(activityNonVideoView, activityVideoView);
         this.webView = webView;
     }
     /**

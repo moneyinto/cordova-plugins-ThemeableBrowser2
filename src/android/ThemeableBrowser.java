@@ -17,7 +17,7 @@
        under the License.
 */
 package com.initialxy.cordova.themeablebrowser;
-
+import android.app.Activity;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
@@ -32,6 +32,7 @@ import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Browser;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -109,6 +110,8 @@ public class ThemeableBrowser extends CordovaPlugin {
     private static final String WRN_UNDEFINED = "undefined";
 
     private boolean mediaPlaybackRequiresUserGesture = false;
+
+    private boolean fullScreenFeature = false;
 
     private ThemeableBrowserDialog dialog;
     private WebView inAppWebView;
@@ -515,6 +518,7 @@ public class ThemeableBrowser extends CordovaPlugin {
         } else {
             this.inAppWebView.loadUrl(url);
         }
+
         this.inAppWebView.requestFocus();
     }
 
@@ -534,29 +538,78 @@ public class ThemeableBrowser extends CordovaPlugin {
 
         // Create dialog in new thread
         Runnable runnable = new Runnable() {
+            private boolean inFullScreen = false;
+            private void enableFullScreen(Activity activity, Window window) {
+                inFullScreen = true;
+                WindowManager.LayoutParams attrs = window.getAttributes();
+                attrs.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
+                attrs.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+                window.setAttributes(attrs);
+                if (android.os.Build.VERSION.SDK_INT >= 14)
+                {
+                    //noinspection all
+                    int flags = View.SYSTEM_UI_FLAG_LOW_PROFILE;
+                    if (android.os.Build.VERSION.SDK_INT >= 16)
+                    {
+                        flags = View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE;
+                    }
+                    window.getDecorView().setSystemUiVisibility(flags);
+                }
+
+            }
+
+            private void disableFullScreen(Activity activity, Window window) {
+                inFullScreen = false;
+                WindowManager.LayoutParams attrs = window.getAttributes();
+                attrs.flags &= ~WindowManager.LayoutParams.FLAG_FULLSCREEN;
+                attrs.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+                window.setAttributes(attrs);
+                if (android.os.Build.VERSION.SDK_INT >= 14)
+                {
+                    //noinspection all
+                    window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+                }
+            }
+
             @SuppressLint("NewApi")
             public void run() {
                 // Let's create the main dialog
                 dialog = new ThemeableBrowserDialog(cordova.getActivity(),
-                        android.R.style.Theme_Black_NoTitleBar,
+                        android.R.style.Theme_NoTitleBar_Fullscreen,
                         features.hardwareback);
                 if (!features.disableAnimation) {
                     dialog.getWindow().getAttributes().windowAnimations
                             = android.R.style.Animation_Dialog;
+                }
+                final View decor = dialog.getWindow().getDecorView();
+                decor.setOnSystemUiVisibilityChangeListener (new View.OnSystemUiVisibilityChangeListener() {
+                    public void onSystemUiVisibilityChange(int visibility) {
+                        new Handler().postDelayed(new Runnable() {
+                            public void run(){
+                                if (inFullScreen)
+                                {
+                                    decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE);
+                                }
+                            }
+                        }, 3000);
+                    }
+                });
+                if (fullScreenFeature)
+                {
+                    enableFullScreen(cordova.getActivity(), dialog.getWindow());
                 }
                 dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
                 dialog.setCancelable(true);
                 dialog.setThemeableBrowser(getThemeableBrowser());
 
                 // Main container layout
-                ViewGroup main = null;
-
-                if (features.fullscreen) {
-                    main = new FrameLayout(cordova.getActivity());
-                } else {
-                    main = new LinearLayout(cordova.getActivity());
-                    ((LinearLayout) main).setOrientation(LinearLayout.VERTICAL);
-                }
+                RelativeLayout main = new RelativeLayout(cordova.getActivity());
+//                main.setOrientation(LinearLayout.VERTICAL);
+                RelativeLayout fullScreenMain = new RelativeLayout(cordova.getActivity());
+                fullScreenMain.setLayoutParams(new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+                LinearLayout browserMain = new LinearLayout(cordova.getActivity());
+                browserMain.setOrientation(LinearLayout.VERTICAL);
+                browserMain.setLayoutParams(new RelativeLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
                 // Toolbar layout
                 Toolbar toolbarDef = features.toolbar;
@@ -755,7 +808,7 @@ public class ThemeableBrowser extends CordovaPlugin {
                 }
 
                 // WebView
-                inAppWebView = new WebView(cordova.getActivity());
+                inAppWebView = new VideoEnabledWebView(cordova.getActivity());
                 final ViewGroup.LayoutParams inAppWebViewParams = features.fullscreen
                         ? new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
                         : new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0);
@@ -763,14 +816,15 @@ public class ThemeableBrowser extends CordovaPlugin {
                     ((LinearLayout.LayoutParams) inAppWebViewParams).weight = 1;
                 }
                 inAppWebView.setLayoutParams(inAppWebViewParams);
-                inAppWebView.setWebChromeClient(new InAppChromeClient(thatWebView));
+
+                inAppWebView.setWebChromeClient(new InAppChromeClient(thatWebView, browserMain, fullScreenMain));
                 WebViewClient client = new ThemeableBrowserClient(thatWebView, new PageLoadListener() {
                     @Override
                     public void onPageFinished(String url, boolean canGoBack, boolean canGoForward) {
                         if (inAppWebView != null
-                                && title != null && features.title != null
-                                && features.title.staticText == null
-                                && features.title.showPageTitle) {
+                            && title != null && features.title != null
+                            && features.title.staticText == null
+                            && features.title.showPageTitle) {
                             title.setText(inAppWebView.getTitle());
                         }
 
@@ -783,6 +837,7 @@ public class ThemeableBrowser extends CordovaPlugin {
                         }
                     }
                 });
+
                 inAppWebView.setWebViewClient(client);
                 WebSettings settings = inAppWebView.getSettings();
                 settings.setJavaScriptEnabled(true);
@@ -790,6 +845,13 @@ public class ThemeableBrowser extends CordovaPlugin {
                 settings.setBuiltInZoomControls(features.zoom);
                 settings.setDisplayZoomControls(false);
                 settings.setPluginState(android.webkit.WebSettings.PluginState.ON);
+
+                inAppWebView.addJavascriptInterface(new Object(){
+                    @JavascriptInterface
+                    public String getENV(){
+                        return "ZSH";
+                    }
+                }, "ENV");
 
                 // Add postMessage interface
                 class JsObject {
@@ -954,24 +1016,27 @@ public class ThemeableBrowser extends CordovaPlugin {
 
                 if (features.fullscreen) {
                     // If full screen mode, we have to add inAppWebView before adding toolbar.
-                    main.addView(inAppWebView);
+                    browserMain.addView(inAppWebView);
                 }
 
                 // Don't add the toolbar if its been disabled
                 if (features.location) {
                     // Add our toolbar to our main view/layout
-                    main.addView(toolbar);
+                    browserMain.addView(toolbar);
                 }
 
                 if (!features.fullscreen) {
                     // If not full screen, we add inAppWebView after adding toolbar.
-                    main.addView(inAppWebView);
+                    browserMain.addView(inAppWebView);
                 }
 
                 WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
                 lp.copyFrom(dialog.getWindow().getAttributes());
                 lp.width = WindowManager.LayoutParams.MATCH_PARENT;
                 lp.height = WindowManager.LayoutParams.MATCH_PARENT;
+
+                main.addView(browserMain);
+                main.addView(fullScreenMain);
 
                 dialog.setContentView(main);
                 dialog.show();
